@@ -240,5 +240,36 @@ class CustomPlayer:
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        # When a leaf of the game tree is reached, the recursion ends
+        # and the utility value of the current state from the player's perspective is returned
+        state_utility = game.utility(self)
+        if state_utility != 0:
+            return state_utility, (-1, -1)
+
+        # When depth equals 0, the recursion ends too
+        # but the evaluated value of the current state from the player's perspective is returned
+        if depth <= 0:
+            return self.score(game, self), (-1, -1)
+
+        # Else the children nodes are examined to determine the backed-up value of the current state.
+        if maximizing_player:
+            best = float('-inf'), (-1, -1)
+            for move in game.get_legal_moves():
+                value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, not maximizing_player)[0]
+                best = max(best, (value, move), key=itemgetter(0))
+                # pruning: if a child's value is greater than beta, then other children's values cannot change the result
+                if value >= beta:
+                    break
+                alpha = max(alpha, value)
+            return best
+
+        else:
+            best = float('inf'), (-1, -1)
+            for move in game.get_legal_moves():
+                value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, not maximizing_player)[0]
+                best = min(best, (value, move), key=itemgetter(0))
+                # pruning: if a child's value is lower than alpha, then other children's values cannot change the result
+                if value <= alpha:
+                    break
+                beta = min(beta, value)
+            return best
