@@ -1,4 +1,5 @@
 from operator import itemgetter
+from math import pow
 
 """This file contains all the classes you must complete for this project.
 
@@ -13,6 +14,71 @@ relative strength using tournament.py and include the results in your report.
 class Timeout(Exception):
     """Subclass base exception for code clarity."""
     pass
+
+
+def reachability_score(game, player):
+    """
+    We define the reachability score of a game state for a given player as the sum of
+    the reachability score of each cell for this player.
+
+    We define the reachability score of a cell for a given player as
+     - 0 if the cell is no longer reachable by the player
+     - 2^(1-k) else, where k is the minimal number of moves to reach the cell
+       (1 for cells reachable in 1 move, 0.5 for cells reachable in 2 moves, etc)
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    player : object
+        A player instance in the current game (i.e., an object corresponding to
+        one of the player objects `game.__player_1__` or `game.__player_2__`.)
+
+    Returns
+    -------
+    float
+        The reachability score of the current game state for the specified player.
+    """
+    score = 0
+    blanks = set(game.get_blank_spaces())
+    directions = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
+
+    # Perform a BFS, keeping track of the depth, and adding cell values to the score as we go along
+    queue = [(0, game.get_player_location(player))]
+    while len(queue) > 0:
+        depth, (r, c) = queue.pop(0)
+        valid_moves = {(r + dr, c + dc) for dr, dc in directions} & blanks
+        score += len(valid_moves) * pow(2, -depth)
+        blanks.difference_update(valid_moves)
+        queue.extend([(depth + 1, move) for move in valid_moves])
+
+    return float(score)
+
+
+def differential_reachability_score(game, player):
+    """
+    We define the differential reachability score of a game state for a given player as
+    the reachability score of this game state for this player minus the reachability score
+    of this game state for the opponent.
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    player : object
+        A player instance in the current game (i.e., an object corresponding to
+        one of the player objects `game.__player_1__` or `game.__player_2__`.)
+
+    Returns
+    -------
+    float
+        The differential reachability score of the current game state for the specified player.
+    """
+    return float(reachability_score(game, player) - reachability_score(game, game.get_opponent(player)))
 
 
 def custom_score(game, player):
@@ -37,9 +103,7 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-
-    # TODO: finish this function!
-    raise NotImplementedError
+    return differential_reachability_score(game, player)
 
 
 class CustomPlayer:
@@ -85,15 +149,9 @@ class CustomPlayer:
         """Search for the best move from the available legal moves and return a
         result before the time limit expires.
 
-        This function must perform iterative deepening if self.iterative=True,
-        and it must use the search method (minimax or alphabeta) corresponding
+        This function performs iterative deepening if self.iterative=True,
+        and it uses the search method (minimax or alphabeta) corresponding
         to the self.method value.
-
-        **********************************************************************
-        NOTE: If time_left < 0 when this function returns, the agent will
-              forfeit the game due to timeout. You must return _before_ the
-              timer reaches 0.
-        **********************************************************************
 
         Parameters
         ----------
@@ -116,13 +174,9 @@ class CustomPlayer:
             Board coordinates corresponding to a legal move; may return
             (-1, -1) if there are no available legal moves.
         """
-
         self.time_left = time_left
 
-        # Perform any required initializations, including selecting an initial
-        # move from the game board (i.e., an opening book)
-
-        # Return immediately if there are no legal moves
+        # Return immediately if there is no legal move
         if len(legal_moves) == 0:
             return -1, -1
 
@@ -136,7 +190,7 @@ class CustomPlayer:
         # We thus call it in a try/except block
         try:
             if self.iterative:
-                depth = 0
+                depth = 1
                 while True:
                     value, move = method_fn(game, depth, True)
                     best = max(best, (value, move), key=itemgetter(0))
@@ -152,7 +206,7 @@ class CustomPlayer:
         return best[1]
 
     def minimax(self, game, depth, maximizing_player=True):
-        """Implement the minimax search algorithm as described in the lectures.
+        """Implement the minimax search algorithm
 
         Parameters
         ----------
@@ -175,12 +229,6 @@ class CustomPlayer:
 
         tuple(int, int)
             The best move for the current branch; (-1, -1) for no legal moves
-
-        Notes
-        -----
-            (1) You MUST use the `self.score()` method for board evaluation
-                to pass the project unit tests; you cannot call any other
-                evaluation function directly.
         """
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
@@ -205,8 +253,7 @@ class CustomPlayer:
             return min(children_values, key=itemgetter(0))
 
     def alphabeta(self, game, depth, alpha=float("-inf"), beta=float("inf"), maximizing_player=True):
-        """Implement minimax search with alpha-beta pruning as described in the
-        lectures.
+        """Implement minimax search with alpha-beta pruning
 
         Parameters
         ----------
@@ -235,12 +282,6 @@ class CustomPlayer:
 
         tuple(int, int)
             The best move for the current branch; (-1, -1) for no legal moves
-
-        Notes
-        -----
-            (1) You MUST use the `self.score()` method for board evaluation
-                to pass the project unit tests; you cannot call any other
-                evaluation function directly.
         """
         if self.time_left() < self.TIMER_THRESHOLD:
             raise Timeout()
@@ -262,7 +303,7 @@ class CustomPlayer:
             for move in game.get_legal_moves():
                 value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, not maximizing_player)[0]
                 best = max(best, (value, move), key=itemgetter(0))
-                # pruning: if a child's value is greater than beta, then other children's values cannot change the result
+                # pruning: if value is greater than beta, this branch won't be chosen by the minimax algorithm
                 if value >= beta:
                     break
                 alpha = max(alpha, value)
@@ -273,7 +314,7 @@ class CustomPlayer:
             for move in game.get_legal_moves():
                 value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, not maximizing_player)[0]
                 best = min(best, (value, move), key=itemgetter(0))
-                # pruning: if a child's value is lower than alpha, then other children's values cannot change the result
+                # pruning: if value is lower than alpha, this branch won't be chosen by the minimax algorithm
                 if value <= alpha:
                     break
                 beta = min(beta, value)
