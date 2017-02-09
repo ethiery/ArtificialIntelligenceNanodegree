@@ -7,6 +7,7 @@ from copy import copy
 
 Move = Tuple[int, int]
 Timer = Callable[[], float]
+Board_Key = Tuple[int, Move, Move, bool]
 
 
 class Player(object, metaclass=ABCMeta):
@@ -43,6 +44,7 @@ class Board(object):
 
     BLANK = 0
     NOT_MOVED = None
+    DIRECTIONS = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
 
     def __init__(self, player_1: Player, player_2: Player, width: int = 7, height: int = 7):
         """
@@ -63,10 +65,22 @@ class Board(object):
         self.__player_2__ = player_2
         self.__active_player__ = player_1
         self.__inactive_player__ = player_2
-        self.__board_state__ = [[Board.BLANK] * width for _ in range(height)]
         self.__blank_spaces__ = {(i, j) for j in range(self.width) for i in range(self.height)}
+        self.__blank_spaces_int__ = 0
         self.__last_player_move__ = {player_1: Board.NOT_MOVED, player_2: Board.NOT_MOVED}
-        self.__player_symbols__ = {Board.BLANK: Board.BLANK, player_1: 1, player_2: 2}
+
+    def get_key(self) -> Board_Key:
+        """
+        A board is uniquely identied by a tuple containing:
+        - An int whose (r*width+c)-th bit is equal to 0 if cell (r,c) is still available, 1 else
+        - the position of the first player
+        - the position of the second player
+        - a boolean indicating if the first player is active or not
+        """
+        return (self.__blank_spaces_int__,
+                self.__last_player_move__[self.__player_1__],
+                self.__last_player_move__[self.__player_2__],
+                self.__player_1__ == self.__active_player__)
 
     @property
     def active_player(self) -> Player:
@@ -109,9 +123,8 @@ class Board(object):
         new_board.__active_player__ = self.__active_player__
         new_board.__inactive_player__ = self.__inactive_player__
         new_board.__last_player_move__ = copy(self.__last_player_move__)
-        new_board.__player_symbols__ = copy(self.__player_symbols__)
-        new_board.__board_state__ = deepcopy(self.__board_state__)
         new_board.__blank_spaces__ = deepcopy(self.__blank_spaces__)
+        new_board.__blank_spaces_int__ = self.__blank_spaces_int__
         return new_board
 
     def forecast_move(self, move: Move) -> 'Board':
@@ -130,9 +143,10 @@ class Board(object):
         new_board.apply_move(move)
         return new_board
 
-    def move_is_legal(self, move: Move) -> bool:
+    def get_forecast_key(self, move: Move) -> Board_Key:
         """
-        Test whether a move is legal in the current game state.
+        Compute the key of the board obtained by applying an input move the advance the game one ply,
+        without actually doing it.
 
         Parameters
         ----------
@@ -140,10 +154,14 @@ class Board(object):
 
         Returns
         ----------
-        True if the move is legal, False otherwise
+        A key of the board with the input move applied.
         """
         row, col = move
-        return (0 <= row < self.height) and (0 <= col < self.width) and (self.__board_state__[row][col] == Board.BLANK)
+        new_blank_spaces_int = self.__blank_spaces_int__ + (1 << (row * self.width + col))
+        if self.__player_1__ == self.__active_player__:
+            return new_blank_spaces_int, move, self.__last_player_move__[self.__player_2__], False
+        else:
+            return new_blank_spaces_int, self.__last_player_move__[self.__player_1__], move, True
 
     def get_blank_spaces(self) -> List[Move]:
         """
@@ -180,7 +198,13 @@ class Board(object):
         """
         if player is None:
             player = self.active_player
-        return self.__get_moves__(self.__last_player_move__[player])
+
+        move = self.__last_player_move__[player]
+        if move == Board.NOT_MOVED:
+            return self.get_blank_spaces()
+
+        r, c = move
+        return list({(r + dr, c + dc) for dr, dc in Board.DIRECTIONS} & self.__blank_spaces__)
 
     def apply_move(self, move: Move):
         """
@@ -192,27 +216,15 @@ class Board(object):
         """
         row, col = move
         self.__last_player_move__[self.active_player] = move
-        self.__board_state__[row][col] = self.__player_symbols__[self.active_player]
         self.__blank_spaces__.remove(move)
+        self.__blank_spaces_int__ += (1 << (row * self.width + col))
         self.__active_player__, self.__inactive_player__ = self.__inactive_player__, self.__active_player__
         self.move_count += 1
 
-    def is_winner(self, player: Player) -> bool:
-        """ Test whether the specified player has won the game. """
-        return player == self.inactive_player and not self.get_legal_moves(self.active_player)
-
-    def is_loser(self, player: Player) -> bool:
-        """ Test whether the specified player has lost the game. """
-        return player == self.active_player and not self.get_legal_moves(self.active_player)
-
     def utility(self, player: Union[Player, None] = None) -> float:
         """
-        Returns the utility of the current game state from the perspective
-        of the specified player.
-
-                    /  +infinity,   "player" wins
-        utility =  |   -infinity,   "player" loses
-                    \          0,    otherwise
+        Returns the utility of the current game state from the perspective of the specified player.
+        Which is +inf if he wins, -inf if he loses, and 0 otherwise
 
         Parameters
         ----------
@@ -221,8 +233,8 @@ class Board(object):
 
         Returns
         ----------
-        The utility value of the current game state for the specified player, which is +inf if the player has won,
-        -inf if the player has lost, and 0 otherwise.
+        The utility value of the current game state for the specified player, which is +inf if the player wins,
+        -inf if he loses, and 0 otherwise.
         """
         if not self.get_legal_moves(self.active_player):
             if player == self.inactive_player:
@@ -231,24 +243,6 @@ class Board(object):
                 return float("-inf")
 
         return 0.
-
-    def __get_moves__(self, move):
-        """
-        Generate the list of possible moves for an L-shaped motion (like a
-        knight in chess).
-        """
-
-        if move == Board.NOT_MOVED:
-            return self.get_blank_spaces()
-
-        r, c = move
-
-        directions = [(-2, -1), (-2, 1), (-1, -2), (-1, 2),
-                      (1, -2), (1, 2), (2, -1), (2, 1)]
-
-        valid_moves = [(r + dr, c + dc) for dr, dc in directions if self.move_is_legal((r + dr, c + dc))]
-
-        return valid_moves
 
     def to_string(self) -> str:
         """
@@ -271,12 +265,11 @@ class Board(object):
             out += '{} | '.format(i + 1)
 
             for j in range(self.width):
-
-                if not self.__board_state__[i][j]:
+                if (i, j) in self.__blank_spaces__:
                     out += ' '
-                elif p1_loc and i == p1_loc[0] and j == p1_loc[1]:
+                elif p1_loc and p1_loc == (i, j):
                     out += '1'
-                elif p2_loc and i == p2_loc[0] and j == p2_loc[1]:
+                elif p2_loc and p2_loc == (i, j):
                     out += '2'
                 else:
                     out += '-'

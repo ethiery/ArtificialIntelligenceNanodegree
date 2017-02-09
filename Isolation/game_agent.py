@@ -124,7 +124,7 @@ class CustomPlayer(Player):
     """
 
     def __init__(self, search_depth: int = 3, score_fn: Score_Function = custom_score, iterative: bool = True,
-                 method: str = 'minimax', timeout: float = 10.):
+                 method: str = 'minimax', timeout: float = 15.):
         """
         Parameters
         ----------
@@ -147,8 +147,9 @@ class CustomPlayer(Player):
         self.method = method
         self.time_left = None
         self.TIMER_THRESHOLD = timeout
+        self.cache = dict()
 
-    def get_move(self, game: 'Board', legal_moves: List[Move], time_left: Timer) -> Move:
+    def get_move(self, game: Board, legal_moves: List[Move], time_left: Timer) -> Move:
         """
         Search for the best move from the available legal moves and return a
         result before the time limit expires.
@@ -194,6 +195,8 @@ class CustomPlayer(Player):
                 best = method_fn(game, self.search_depth, True)
 
         except Timeout:
+            # if self.iterative:
+            #     print(depth)
             pass
 
         # Return the best move found yet
@@ -240,7 +243,7 @@ class CustomPlayer(Player):
             return min(children_values, key=itemgetter(0))
 
     def alphabeta(self, game: Board, depth: int, alpha: float = float("-inf"), beta: float = float("inf"),
-                  maximizing_player: bool = True):
+                  maximizing_player: bool = True) -> Tuple[float, Move]:
         """
         Implement minimax search with alpha-beta pruning
 
@@ -269,32 +272,72 @@ class CustomPlayer(Player):
         # and the utility value of the current state from the player's perspective is returned
         state_utility = game.utility(self)
         if state_utility != 0:
-            return state_utility, (-1, -1)
+            result = state_utility, (-1, -1)
 
         # When depth equals 0, the recursion ends too
         # but the evaluated value of the current state from the player's perspective is returned
-        if depth <= 0:
-            return self.score(game, self), (-1, -1)
+        elif depth <= 0:
+            result = self.score(game, self), (-1, -1)
 
         # Else the children nodes are examined to determine the backed-up value of the current state.
-        if maximizing_player:
-            best = float('-inf'), (-1, -1)
-            for move in game.get_legal_moves():
-                value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, not maximizing_player)[0]
-                best = max(best, (value, move), key=itemgetter(0))
-                # pruning: if value is greater than beta, this branch won't be chosen by the minimax algorithm
-                if value >= beta:
-                    break
-                alpha = max(alpha, value)
-            return best
-
         else:
-            best = float('inf'), (-1, -1)
-            for move in game.get_legal_moves():
-                value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, not maximizing_player)[0]
-                best = min(best, (value, move), key=itemgetter(0))
-                # pruning: if value is lower than alpha, this branch won't be chosen by the minimax algorithm
-                if value <= alpha:
-                    break
-                beta = min(beta, value)
-            return best
+            if maximizing_player:
+                # Explore possible moves by decreasing cached value to maximize pruning opportunities,
+                result = float('-inf'), (-1, -1)
+                for move, cached_value, cached_depth in self.get_sorted_moves(game, True):
+                    # Use cached value if possible
+                    if cached_depth >= depth - 1:
+                        value = cached_value
+                    else:
+                        value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, False)[0]
+                    # Update result, and performs alpha-beta pruning
+                    result = max(result, (value, move), key=itemgetter(0))
+                    if value >= beta:
+                        break
+                    alpha = max(alpha, value)
+            else:
+                # Explore possible moves by increasing cached value to maximize pruning opportunities,
+                result = float('inf'), (-1, -1)
+                for move, cached_value, cached_depth in self.get_sorted_moves(game, False):
+                    # Use cached value if possible
+                    if cached_depth >= depth - 1:
+                        value = cached_value
+                    else:
+                        value = self.alphabeta(game.forecast_move(move), depth - 1, alpha, beta, True)[0]
+                    # Update result, and performs alpha-beta pruning
+                    result = min(result, (value, move), key=itemgetter(0))
+                    if value <= alpha:
+                        break
+                    beta = min(beta, value)
+
+        # Cache result and return it
+        self.cache[game.get_key()] = (result[0], depth)
+        return result
+
+    def get_sorted_moves(self, game: Board, reverse: bool) -> List[Tuple[Move, float, int]]:
+        """
+        Return a list of all legal moves for the active player and the cached value + depth of
+        the resulting game states, sorted by cached value.
+        Game state that are not cached yet are placed at the end of the list and have a cache depth -1
+
+        Parameters
+        ----------
+        game : An instance of `isolation.Board` encoding the current state of the game
+
+        reverse : Set to True to sort in ascending order, False to sort in descending order
+
+        Returns
+        -------
+        A list of tuples (move, cached value, cache depth) of all legal moves for the active player,
+        with the cached value and depth of the resulting game states, sorted by cached value.
+        """
+        default = (float('-inf') if reverse else float('inf'), -1)
+        moves = []
+        for move in game.get_legal_moves():
+            child_hash = game.get_forecast_key(move)
+            cached_value, cached_depth = self.cache.get(child_hash, default)
+            moves.append((move, cached_value, cached_depth))
+
+        moves.sort(key=itemgetter(1), reverse=reverse)
+
+        return moves
