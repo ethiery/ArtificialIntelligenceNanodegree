@@ -10,6 +10,9 @@ class Timeout(Exception):
     pass
 
 
+custom_score = differential_reach_score
+
+
 class CustomPlayer(Player):
     """
     Game-playing agent that chooses a move using a custom evaluation function
@@ -17,7 +20,7 @@ class CustomPlayer(Player):
     """
 
     def __init__(self, search_depth: int = 3, score_fn: Score_Function = differential_reach_score,
-                 iterative: bool = True, method: str = 'minimax', timeout: float = 15., reordering: bool = False):
+                 iterative: bool = True, method: str = 'minimax', timeout: float = 10., reordering: bool = False):
         """
 
         :param search_depth: A strictly positive integer for the number of layers in the game tree to explore
@@ -74,9 +77,12 @@ class CustomPlayer(Player):
         best = float('-inf'), (-1, -1)
         try:
             if self.iterative:
-                for depth in range(1, len(board.blank_spaces) + 1):
+                nb_cells_left = board.width * board.height - board.move_count
+                for depth in range(1, nb_cells_left + 1):
                     value, move = method_fn(board, depth, maximizing_player=True)
                     best = max(best, (value, move), key=itemgetter(0))
+                    if value == float('+inf'):
+                        break
                     self.average_depth += 1
             else:
                 best = method_fn(board, self.search_depth, True)

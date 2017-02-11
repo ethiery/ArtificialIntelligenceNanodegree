@@ -7,23 +7,20 @@ interface, but cannot be automatically assessed for correctness.
 STUDENTS SHOULD NOT NEED TO MODIFY THIS CODE.  IT WOULD BE BEST TO TREAT THIS
 FILE AS A BLACK BOX FOR TESTING.
 """
-import random
 import unittest
 import timeit
 import sys
-
-import isolation
-import game_agent
-
 from collections import Counter
-from copy import deepcopy
-from copy import copy
 from functools import wraps
 from queue import Queue
 from threading import Thread
 from multiprocessing import TimeoutError
 from queue import Empty as QueueEmptyError
 from importlib import reload
+
+import isolation
+import game_agent
+from sample_players import RandomPlayer
 
 WRONG_MOVE = """
 The {} function failed because it returned a non-optimal move at search depth {}.
@@ -175,14 +172,12 @@ class CounterBoard(isolation.Board):
         self.root = None
 
     def copy(self):
-        new_board = CounterBoard(self.__player_1__, self.__player_2__,
-                                 width=self.width, height=self.height)
+        new_board = CounterBoard(self.player_1, self.player_2, width=self.width, height=self.height)
         new_board.move_count = self.move_count
-        new_board.__active_player__ = self.__active_player__
-        new_board.__inactive_player__ = self.__inactive_player__
-        new_board.__last_player_move__ = copy(self.__last_player_move__)
-        new_board.__player_symbols__ = copy(self.__player_symbols__)
-        new_board.__board_state__ = deepcopy(self.__board_state__)
+        new_board.active_player = self.active_player
+        new_board.inactive_player = self.inactive_player
+        new_board.locations = {key: val for key, val in self.locations.items()}
+        new_board.board_state = self.board_state
         new_board.counter = self.counter
         new_board.visited = self.visited
         new_board.root = self.root
@@ -191,8 +186,7 @@ class CounterBoard(isolation.Board):
     def forecast_move(self, move):
         self.counter[move] += 1
         self.visited.add(move)
-        new_board = self.copy()
-        new_board.apply_move(move)
+        new_board = super().forecast_move(move)
         if new_board.root is None:
             new_board.root = move
         return new_board
@@ -211,19 +205,19 @@ class Project1Test(unittest.TestCase):
         testing.
         """
         reload(game_agent)
-        agentUT = game_agent.CustomPlayer(depth, eval_fn, iterative, method)
-        board = CounterBoard(agentUT, 'null_agent', w, h)
+        agent_ut = game_agent.CustomPlayer(depth, eval_fn, iterative, method)
+        board = CounterBoard(agent_ut, 'null_agent', w, h)
         board.apply_move(loc1)
         board.apply_move(loc2)
-        return agentUT, board
+        return agent_ut, board
 
     @timeout(5)
     # @unittest.skip("Skip eval function test.")  # Uncomment this line to skip test
     def test_heuristic(self):
         """ Test output interface of heuristic score function interface."""
 
-        player1 = "Player1"
-        player2 = "Player2"
+        player1 = RandomPlayer()
+        player2 = RandomPlayer()
         p1_location = (0, 0)
         p2_location = (1, 1)  # top left corner
         game = isolation.Board(player1, player2)
@@ -231,9 +225,9 @@ class Project1Test(unittest.TestCase):
         game.apply_move(p2_location)
 
         self.assertIsInstance(game_agent.custom_score(game, player1), float,
-            "The heuristic function should return a floating point")
+                              "The heuristic function should return a floating point")
 
-    timeout(5)
+    @timeout(5)
     # @unittest.skip("Skip simple minimax test.")  # Uncomment this line to skip test
     def test_minimax_interface(self):
         """ Test CustomPlayer.minimax interface with simple input """
@@ -246,10 +240,10 @@ class Project1Test(unittest.TestCase):
         heuristic = lambda g, p: 0.  # return 0 everywhere
 
         # create a player agent & a game board
-        agentUT = game_agent.CustomPlayer(
+        agent_ut = game_agent.CustomPlayer(
             test_depth, heuristic, iterative_search, search_method)
-        agentUT.time_left = lambda: 99  # ignore timeout for fixed-depth search
-        board = isolation.Board(agentUT, 'null_agent', w, h)
+        agent_ut.time_left = lambda: 99  # ignore timeout for fixed-depth search
+        board = isolation.Board(agent_ut, RandomPlayer(), w, h)
 
         # place two "players" on the board at arbitrary (but fixed) locations
         board.apply_move(starting_location)
@@ -257,14 +251,14 @@ class Project1Test(unittest.TestCase):
 
         for move in board.get_legal_moves():
             next_state = board.forecast_move(move)
-            v, _ = agentUT.minimax(next_state, test_depth)
+            v, _ = agent_ut.minimax(next_state, test_depth)
 
             self.assertTrue(type(v) == float,
                             ("Minimax function should return a floating " +
                              "point value approximating the score for the " +
                              "branch being searched."))
 
-    timeout(5)
+    @timeout(5)
     # @unittest.skip("Skip alphabeta test.")  # Uncomment this line to skip test
     def test_alphabeta_interface(self):
         """ Test CustomPlayer.alphabeta interface with simple input """
@@ -277,10 +271,10 @@ class Project1Test(unittest.TestCase):
         heuristic = lambda g, p: 0.  # return 0 everywhere
 
         # create a player agent & a game board
-        agentUT = game_agent.CustomPlayer(
+        agent_ut = game_agent.CustomPlayer(
             test_depth, heuristic, iterative_search, search_method)
-        agentUT.time_left = lambda: 99  # ignore timeout for fixed-depth search
-        board = isolation.Board(agentUT, 'null_agent', w, h)
+        agent_ut.time_left = lambda: 99  # ignore timeout for fixed-depth search
+        board = isolation.Board(agent_ut, RandomPlayer(), w, h)
 
         # place two "players" on the board at arbitrary (but fixed) locations
         board.apply_move(starting_location)
@@ -288,7 +282,7 @@ class Project1Test(unittest.TestCase):
 
         for move in board.get_legal_moves():
             next_state = board.forecast_move(move)
-            v, _ = agentUT.alphabeta(next_state, test_depth)
+            v, _ = agent_ut.alphabeta(next_state, test_depth)
 
             self.assertTrue(type(v) == float,
                             ("Alpha Beta function should return a floating " +
@@ -308,13 +302,13 @@ class Project1Test(unittest.TestCase):
         heuristic = lambda g, p: 0.  # return 0 everywhere
 
         # create a player agent & a game board
-        agentUT = game_agent.CustomPlayer(
+        agent_ut = game_agent.CustomPlayer(
             test_depth, heuristic, iterative_search, search_method)
 
         # Test that get_move returns a legal choice on an empty game board
-        board = isolation.Board(agentUT, 'null_agent', w, h)
+        board = isolation.Board(agent_ut, RandomPlayer(), w, h)
         legal_moves = board.get_legal_moves()
-        move = agentUT.get_move(board, legal_moves, lambda: 99)
+        move = agent_ut.get_move(board, lambda: 99)
         self.assertIn(move, legal_moves,
                       ("The get_move() function failed as player 1 on an " +
                        "empty board. It should return coordinates on the " +
@@ -323,10 +317,10 @@ class Project1Test(unittest.TestCase):
                        "the current game board."))
 
         # Test that get_move returns a legal choice for first move as player 2
-        board = isolation.Board('null_agent', agentUT, w, h)
+        board = isolation.Board(RandomPlayer(), agent_ut, w, h)
         board.apply_move(starting_location)
         legal_moves = board.get_legal_moves()
-        move = agentUT.get_move(board, legal_moves, lambda: 99)
+        move = agent_ut.get_move(board, lambda: 99)
         self.assertIn(move, legal_moves,
                       ("The get_move() function failed making the first " +
                        "move as player 2 on a new board. It should return " +
@@ -335,11 +329,11 @@ class Project1Test(unittest.TestCase):
                        "of the legal moves on the current game board."))
 
         # Test that get_move returns a legal choice after first move
-        board = isolation.Board(agentUT, 'null_agent', w, h)
+        board = isolation.Board(agent_ut, RandomPlayer(), w, h)
         board.apply_move(starting_location)
         board.apply_move(adversary_location)
         legal_moves = board.get_legal_moves()
-        move = agentUT.get_move(board, legal_moves, lambda: 99)
+        move = agent_ut.get_move(board, lambda: 99)
         self.assertIn(move, legal_moves,
                       ("The get_move() function failed as player 1 on a " +
                        "game in progress. It should return coordinates on" +
@@ -378,9 +372,7 @@ class Project1Test(unittest.TestCase):
 
         # These moves are the branches that will lead to the cells in the value
         # table for the search depths.
-        expected_moves = [set([(1, 5)]),
-                          set([(3, 1), (3, 5)]),
-                          set([(3, 5), (4, 2)])]
+        expected_moves = [{(1, 5)}, {(3, 1), (3, 5)}, {(3, 5), (4, 2)}]
 
         # Expected number of node expansions during search
         counts = [(8, 8), (24, 10), (92, 27), (418, 32), (1650, 43)]
@@ -391,14 +383,12 @@ class Project1Test(unittest.TestCase):
         # evaluation function.
         for idx in range(5):
             test_depth = idx + 1
-            agentUT, board = self.initAUT(test_depth, heuristic,
-                                          iterative_search, method,
-                                          loc1=starting_location,
-                                          loc2=adversary_location)
+            agent_ut, board = self.initAUT(test_depth, heuristic, iterative_search, method,
+                                           loc1=starting_location, loc2=adversary_location)
 
             # disable search timeout by returning a constant value
-            agentUT.time_left = lambda: 1e3
-            _, move = agentUT.minimax(board, test_depth)
+            agent_ut.time_left = lambda: 1e3
+            _, move = agent_ut.minimax(board, test_depth)
 
             num_explored_valid = board.counts[0] == counts[idx][0]
             num_unique_valid = board.counts[1] == counts[idx][1]
@@ -444,15 +434,12 @@ class Project1Test(unittest.TestCase):
             test_depth = idx + 1  # pruning guarantee requires min depth of 3
             first_branch = []
             heuristic = make_branch_eval(first_branch)
-            agentUT, board = self.initAUT(test_depth, heuristic,
-                                          iterative_search, method,
-                                          loc1=starting_location,
-                                          loc2=adversary_location,
-                                          w=w, h=h)
+            agent_ut, board = self.initAUT(test_depth, heuristic, iterative_search, method,
+                                           loc1=starting_location, loc2=adversary_location, w=w, h=h)
 
             # disable search timeout by returning a constant value
-            agentUT.time_left = lambda: 1e3
-            _, move = agentUT.alphabeta(board, test_depth)
+            agent_ut.time_left = lambda: 1e3
+            _, move = agent_ut.alphabeta(board, test_depth)
 
             num_explored_valid = board.counts[0] == counts[idx][0]
             num_unique_valid = board.counts[1] == counts[idx][1]
@@ -466,7 +453,6 @@ class Project1Test(unittest.TestCase):
             self.assertIn(move, first_branch, WRONG_MOVE.format(
                 method, test_depth, first_branch, move))
 
-
     @timeout(20)
     # @unittest.skip("Skip iterative deepening test.")  # Uncomment this line to skip test
     def test_get_move(self):
@@ -478,7 +464,7 @@ class Project1Test(unittest.TestCase):
         unique nodes have been visited.
         """
 
-        class DynamicTimer():
+        class DynamicTimer:
             """Dynamic Timer allows the time limit to be changed after the
             timer is initialized so that the search timeout can be triggered
             before the timer actually expires. This allows the timer to expire
@@ -510,12 +496,10 @@ class Project1Test(unittest.TestCase):
             # the expected number of nodes
             time_limit = 1e4
             timer = DynamicTimer(time_limit)
-            eval_fn = make_eval_stop(exact_counts[idx][0], timer, time_limit)
-            agentUT, board = self.initAUT(-1, eval_fn, True, method,
-                                          origins[idx], adversary_location,
-                                          w, h)
+            eval_fn = make_eval_stop(exact_counts[idx][0], timer)
+            agent_ut, board = self.initAUT(-1, eval_fn, True, method, origins[idx], adversary_location, w, h)
             legal_moves = board.get_legal_moves()
-            chosen_move = agentUT.get_move(board, legal_moves, timer.time_left)
+            chosen_move = agent_ut.get_move(board, timer.time_left)
 
             diff_total = abs(board.counts[0] - exact_counts[idx][0])
             diff_unique = abs(board.counts[1] - exact_counts[idx][1])

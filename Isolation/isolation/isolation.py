@@ -1,8 +1,7 @@
 from timeit import default_timer
-from typing import Tuple, List, Callable, Union, Dict, Set
+from warnings import warn
+from typing import Tuple, List, Callable, Union, Dict
 from abc import ABCMeta, abstractmethod
-
-from copy import deepcopy
 
 Location = Tuple[int, int]
 Timer = Callable[[], float]
@@ -40,7 +39,7 @@ class Board(object):
 
     BLANK = 0
     NOT_MOVED = None
-    DIRECTIONS = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
+    L_MOVES = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
 
     def __init__(self, player_1: Player, player_2: Player, width: int = 7, height: int = 7):
         """
@@ -56,8 +55,7 @@ class Board(object):
         self.player_2 = player_2
         self.active_player = player_1
         self.inactive_player = player_2
-        self.blank_spaces = {(i, j) for j in range(self.width) for i in range(self.height)}
-        self.blank_spaces_int = 0
+        self.board_state = 0
         self.locations = {player_1: Board.NOT_MOVED, player_2: Board.NOT_MOVED}
 
     def get_key(self) -> Board_Key:
@@ -70,7 +68,7 @@ class Board(object):
 
         :return: The key of the board
         """
-        return (self.blank_spaces_int,
+        return (self.board_state,
                 self.locations[self.player_1],
                 self.locations[self.player_2],
                 self.player_1 == self.active_player)
@@ -95,8 +93,7 @@ class Board(object):
         new_board.active_player = self.active_player
         new_board.inactive_player = self.inactive_player
         new_board.locations = {key: val for key, val in self.locations.items()}
-        new_board.blank_spaces = deepcopy(self.blank_spaces)
-        new_board.blank_spaces_int = self.blank_spaces_int
+        new_board.board_state = self.board_state
         return new_board
 
     def forecast_move(self, move: Location) -> 'Board':
@@ -121,11 +118,11 @@ class Board(object):
         :return: The key of the board that would be obtained by applying the input move to advance the game one ply
         """
         row, col = move
-        new_blank_spaces_int = self.blank_spaces_int + (1 << (row * self.width + col))
+        new_board_state = self.board_state + (1 << (row * self.width + col))
         if self.player_1 == self.active_player:
-            return new_blank_spaces_int, move, self.locations[self.player_2], False
+            return new_board_state, move, self.locations[self.player_2], False
         else:
-            return new_blank_spaces_int, self.locations[self.player_1], move, True
+            return new_board_state, self.locations[self.player_1], move, True
 
     def get_player_location(self, player: Player) -> Location:
         """
@@ -136,47 +133,64 @@ class Board(object):
         # return self.history[player][-1]
         return self.locations[player]
 
-    def get_legal_moves(self, player: Player = None) -> Set[Location]:
+    def is_available(self, board_state: int, cell: Location) -> bool:
+        r, c = cell
+        # noinspection PyChainedComparisons
+        return 0 <= r < self.height and 0 <= c < self.width and (board_state >> (r * self.width + c)) & 1 == 0
+
+    def get_legal_moves(self, player: Player = None) -> List[Location]:
         """
         :param player: One of the registered player of the current game. Defaults to the active player.
 
-        :return: A set of all the legal moves for the input player, as coordinate pairs (row, column)
+        :return: A list of all the legal moves for the input player, as coordinate pairs (row, column)
         """
         if player is None:
             player = self.active_player
 
+        # First move can be any available cell
         location = self.locations[player]
         if location == Board.NOT_MOVED:
-            return set(self.blank_spaces)
+            all_cells = [(i, j) for j in range(self.width) for i in range(self.height)]
+            if player == self.player_2:
+                all_cells.remove(self.locations[self.player_1])
+            return all_cells
 
+        # Other moves are L-shaped moves (like knight in chess)
         r, c = location
-        return {(r + dr, c + dc) for dr, dc in Board.DIRECTIONS} & self.blank_spaces
+        return [(r + dr, c + dc) for dr, dc in Board.L_MOVES if self.is_available(self.board_state, (r + dr, c + dc))]
 
-    def get_reachable_locations(self, player: Player) -> Dict[int, Set[Location]]:
+    def get_reachable_locations(self, player: Player) -> Dict[int, List[Location]]:
         """
         :param player: One of the registered player of the current game
         :return: Dictionary in which reachable locations are sorted by the number of moves required to reach them
         """
         # If no cell is reachable, return an empty dictionary directly
-        directly_reachable = set(self.get_legal_moves(player))
+        directly_reachable = self.get_legal_moves(player)
         if len(directly_reachable) == 0:
             return dict()
 
         # Perform a BFS to find all reachable cells, keeping track of the number of moves required to do so
         reachable_by_depth = {1: directly_reachable}
-        not_reached_yet = self.blank_spaces - directly_reachable
+        explored = self.board_state
+        for row, col in directly_reachable:
+            explored += 1 << (row * self.width + col)
+
         d = 1
         while d in reachable_by_depth:
-            # find cells reachable from cells reachable in exactly d moves
-            just_reached = set()
+            # Explore cells reachable in d moves
+            reachable_in_d_moves = []
             for r, c in reachable_by_depth[d]:
-                just_reached.update({(r + dr, c + dc) for dr, dc in Board.DIRECTIONS})
-            # obtain cells reachable in exactly d+1 moves by excluding cells that were reachable in less moves
-            just_reached.intersection_update(not_reached_yet)
-            # update the set of unreached cells, and the result dictionary
-            if len(just_reached) > 0:
-                not_reached_yet -= just_reached
-                reachable_by_depth[d + 1] = just_reached
+                # Exclude cells that were already reachable in less than d moves
+                just_reached = [(r + dr, c + dc) for dr, dc in Board.L_MOVES
+                                if self.is_available(explored, (r + dr, c + dc))]
+                reachable_in_d_moves.extend(just_reached)
+                # Mark cells as reached
+                for r2, c2 in just_reached:
+                    explored += 1 << (r2 * self.width + c2)
+
+            # update the result dictionary
+            if len(reachable_in_d_moves) > 0:
+                reachable_by_depth[d + 1] = reachable_in_d_moves
             d += 1
 
         return reachable_by_depth
@@ -189,8 +203,7 @@ class Board(object):
         """
         row, col = move
         self.locations[self.active_player] = move
-        self.blank_spaces.remove(move)
-        self.blank_spaces_int += (1 << (row * self.width + col))
+        self.board_state += (1 << (row * self.width + col))
         self.active_player, self.inactive_player = self.inactive_player, self.active_player
         self.move_count += 1
 
@@ -214,8 +227,8 @@ class Board(object):
         :return: A string representation of the current game state, marking the location of each player and indicating
                  which cells have been blocked, and which remain open.
         """
-        symbol = {(i, j): ' ' if (i, j) in self.blank_spaces else '-'
-                  for i in range(self.height) for j in range(self.width)}
+        symbol = {(r, c): ['', '-'][self.board_state & (1 << (r * self.width + c))]
+                  for r in range(self.height) for c in range(self.width)}
 
         symbol[self.locations[self.player_1]] = '1'
         symbol[self.locations[self.player_2]] = '2'
@@ -243,11 +256,11 @@ class Board(object):
 
         return timer
 
-    def play(self, time_limit: float = 200) -> Tuple[Player, List[Location], str]:
+    def play(self, time_limit: float = 100) -> Tuple[Player, List[Location], str]:
         """
         Execute a match between the players by alternately soliciting them to select a move and applying it in the game.
 
-        :param time_limit: (Optional) The number of ms to allow before timeout during each turn. Defaults to 200 ms.
+        :param time_limit: (Optional) The number of ms to allow before timeout during each turn. Defaults to 100 ms.
 
         :return: the winning player, the complete game history and a string indicating the reason for losing
                  ('timeout' or 'invalid move').
@@ -260,6 +273,10 @@ class Board(object):
             remaining = time_left()
 
             if remaining < 0 and self.active_player.is_time_limited:
+                warn('Player {} timed out.'.format(1 if self.active_player == self.player_1 else 2) +
+                     """The get_move() function must return before time_left() reaches 0 ms.
+                     Some time is required for the function to return, so you may need to increase this margin to
+                     avoid timeouts during tournament play.""")
                 reason = 'timeout'
                 break
 

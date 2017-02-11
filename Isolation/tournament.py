@@ -19,7 +19,6 @@ initiative in the second match with agentB at (5, 2) as player 1 and agentA at
 (1, 3) as player 2.
 """
 
-from warnings import warn
 from random import sample
 from collections import namedtuple
 from typing import Tuple, List
@@ -32,14 +31,8 @@ from sample_players import RandomPlayer
 
 
 NUM_MATCHES = 50  # number of matches against each opponent
-TIME_LIMIT = 150  # number of milliseconds before timeout
-
-TIMEOUT_WARNING = "One or more agents lost a match this round due to " + \
-                  "timeout. The get_move() function must return before " + \
-                  "time_left() reaches 0 ms. You will need to leave some " + \
-                  "time for the function to return, and may need to " + \
-                  "increase this margin to avoid timeouts during  " + \
-                  "tournament play."
+TIME_LIMIT = 50  # number of milliseconds before timeout
+TIME_MARGIN = 10  # number of milliseconds before timeout to start returning
 
 DESCRIPTION = """
 This script evaluates the performance of the custom heuristic function by
@@ -78,11 +71,8 @@ def play_match(player_1: Player, player_2: Player, starting_positions: Starting_
     for game in games:
         game.apply_move(starting_positions[0])
         game.apply_move(starting_positions[1])
-        winner, _, termination = game.play(time_limit=TIME_LIMIT)
+        winner, _, _ = game.play(time_limit=TIME_LIMIT)
         num_wins[winner] += 1
-
-        if termination == "timeout":
-            warn(TIMEOUT_WARNING)
 
     return num_wins[player_1], num_wins[player_2]
 
@@ -128,7 +118,7 @@ def main():
     heuristics = [("Null", null_score), ("Open", open_move_score), ("Improved", improved_score)]
     ab_args = {"search_depth": 5, "method": 'alphabeta', "iterative": False}
     mm_args = {"search_depth": 3, "method": 'minimax', "iterative": False}
-    custom_args = {"method": 'alphabeta', 'iterative': True}
+    custom_args = {"method": 'alphabeta', 'iterative': True, 'timeout': TIME_MARGIN, 'reordering': True}
 
     # Create a collection of CPU agents using fixed-depth minimax, alpha beta search, or random selection.
     # The agent names encode the search method and the heuristic function.
@@ -139,8 +129,7 @@ def main():
     # ID_Improved agent is used for comparison to the performance of the submitted agent for calibration on the
     # performance across different systems; i.e., the performance of the student agent is considered relative to
     # the performance of the ID_Improved agent to account for faster or slower computers.
-    test_agents = [Agent(CustomPlayer(**custom_args), "Custom, no reordering"),
-                   Agent(CustomPlayer(**custom_args, reordering=True), "Custom, reordering"),
+    test_agents = [Agent(CustomPlayer(**custom_args), "Custom"),
                    Agent(CustomPlayer(score_fn=improved_score, **custom_args), "ID_Improved")]
 
     # Generate a list of starting positions
@@ -161,11 +150,7 @@ def main():
         print("\n\nResults:")
         print("----------")
         print("{!s:<15}{:>10.2f}%".format(agent.name, win_ratio))
-        try:
-            print('average depth = {}'.format(agent.player.get_average_depth()))
-        except:
-            pass
-
+        print('average depth = {}'.format(agent.player.get_average_depth()))
 
 if __name__ == "__main__":
     main()
