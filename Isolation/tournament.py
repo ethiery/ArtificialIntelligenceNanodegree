@@ -20,15 +20,18 @@ initiative in the second match with agentB at (5, 2) as player 1 and agentA at
 """
 
 from warnings import warn
-from random import choice
+from random import sample
 from collections import namedtuple
-from typing import Tuple
+from typing import Tuple, List
 
-from game_agent import CustomPlayer, differential_reach_score
-from isolation import Player, Board
-from sample_players import RandomPlayer, null_score, open_move_score, improved_score
+from heuristics import null_score, improved_score
+from heuristics import open_move_score
+from isolation import Player, Board, Location
+from game_agent import CustomPlayer
+from sample_players import RandomPlayer
 
-NUM_MATCHES = 20  # number of matches against each opponent
+
+NUM_MATCHES = 50  # number of matches against each opponent
 TIME_LIMIT = 150  # number of milliseconds before timeout
 
 TIMEOUT_WARNING = "One or more agents lost a match this round due to " + \
@@ -51,25 +54,22 @@ same opponents.
 
 Agent = namedtuple("Agent", ["player", "name"])
 
+Starting_Positions = Tuple[Location, Location]
 
-def play_match(player_1: Player, player_2: Player,
-               starting_positions: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[int, int]:
+
+def play_match(player_1: Player, player_2: Player, starting_positions: Starting_Positions) -> Tuple[int, int]:
     """
     Play a match (= two games, with each player starting once) between the players,
     forcing each agent to play from specified starting_positions.
     This should control for differences in outcome resulting from advantage due to starting position on the board.
 
-    Parameters
-    ----------
-    player_1 : First player
+    :param player_1: First player
 
-    player_2 : Second player
+    :param player_2: Second player
 
-    starting_positions : Two coordinate pair (row, column) indicating 2 starting positions on the board.
+    :param starting_positions: Two coordinate pair (row, column) indicating 2 starting positions on the board.
 
-    Returns
-    -------
-    Number of wins of each player
+    :return: Number of wins of each player
     """
     num_wins = {player_1: 0, player_2: 0}
     games = [Board(player_1, player_2), Board(player_2, player_1)]
@@ -87,30 +87,38 @@ def play_match(player_1: Player, player_2: Player,
     return num_wins[player_1], num_wins[player_2]
 
 
-def play_tournament(agents, starting_position_list):
+def bench_agent(agent: Agent, opponents: List[Agent], starting_position_list: List[Starting_Positions]) -> float:
     """
-    Play a tournament, that is a given number of identical matches between the last agent and each one of the other
+    Confront a given agent with a list of opponents, playing matches with the same starting positions for
+    each confrontation.
+
+    :param agent: An agent
+
+    :param opponents: A list of opponents
+
+    :param starting_position_list: A list of starting positions
+
+    :return: The winning ratio of the agent
     """
-    agent_1 = agents[-1]
     wins = 0.
     total = 0.
 
     print("\nPlaying Matches:")
     print("----------")
 
-    for idx, agent_2 in enumerate(agents[:-1]):
-        counts = {agent_1.player: 0., agent_2.player: 0.}
-        names = [agent_1.name, agent_2.name]
-        print("  Match {}: {!s:^11} vs {!s:^11}".format(idx + 1, *names), end=' ')
+    for idx, opponent in enumerate(opponents):
+        print("  Match {}: {!s:^11} vs {!s:^11}".format(idx + 1, agent.name, opponent.name), end=' ')
 
+        agent_total, opponent_total = 0, 0
         for starting_positions in starting_position_list:
-            score_1, score_2 = play_match(agent_1.player, agent_2.player, starting_positions)
-            counts[agent_1.player] += score_1
-            counts[agent_2.player] += score_2
-            total += score_1 + score_2
+            agent_wins, opponent_wins = play_match(agent.player, opponent.player, starting_positions)
+            agent_total += agent_wins
+            opponent_total += opponent_wins
 
-        wins += counts[agent_1.player]
-        print("\tResult: {} to {}".format(int(counts[agent_1.player]), int(counts[agent_2.player])))
+        print("\tResult: {} to {}".format(agent_total, opponent_total))
+
+        wins += agent_total
+        total += agent_total + opponent_total
 
     return 100. * wins / total
 
@@ -122,43 +130,41 @@ def main():
     mm_args = {"search_depth": 3, "method": 'minimax', "iterative": False}
     custom_args = {"method": 'alphabeta', 'iterative': True}
 
-    # Create a collection of CPU agents using fixed-depth minimax or alpha beta
-    # search, or random selection.  The agent names encode the search method
-    # (MM=minimax, AB=alpha-beta) and the heuristic function (Null=null_score,
-    # Open=open_move_score, Improved=improved_score). For example, MM_Open is
-    # an agent using minimax search with the open moves heuristic.
+    # Create a collection of CPU agents using fixed-depth minimax, alpha beta search, or random selection.
+    # The agent names encode the search method and the heuristic function.
+    # For example, MM_Open is an agent using minimax search with the open moves heuristic.
     mm_agents = [Agent(CustomPlayer(score_fn=h, **mm_args), "MM_" + name) for name, h in heuristics]
     ab_agents = [Agent(CustomPlayer(score_fn=h, **ab_args), "AB_" + name) for name, h in heuristics]
     random_agents = [Agent(RandomPlayer(), "Random")]
-
     # ID_Improved agent is used for comparison to the performance of the submitted agent for calibration on the
     # performance across different systems; i.e., the performance of the student agent is considered relative to
     # the performance of the ID_Improved agent to account for faster or slower computers.
-    test_agents = [Agent(CustomPlayer(score_fn=differential_reach_score, **custom_args),
-                         "Student, differential reach score"),
+    test_agents = [Agent(CustomPlayer(**custom_args), "Custom, no reordering"),
+                   Agent(CustomPlayer(**custom_args, reordering=True), "Custom, reordering"),
                    Agent(CustomPlayer(score_fn=improved_score, **custom_args), "ID_Improved")]
 
+    # Generate a list of starting positions
     starting_position_list = []
+    board = Board(RandomPlayer(), RandomPlayer())
     for _ in range(NUM_MATCHES):
-        board = Board(RandomPlayer(), RandomPlayer())
-        ply1 = choice(board.get_legal_moves())
-        board.apply_move(ply1)
-        ply2 = choice(board.get_legal_moves())
-        starting_position_list.append((ply1, ply2))
+        starting_position_list.append(tuple(sample(board.get_legal_moves(), 2)))
 
-    print(DESCRIPTION)
-    for agentUT in test_agents:
+    for agent in test_agents:
         print("")
         print("*************************")
-        print("{:^25}".format("Evaluating: " + agentUT.name))
+        print("{:^25}".format("Evaluating: " + agent.name))
         print("*************************")
 
-        agents = random_agents + mm_agents + ab_agents + [agentUT]
-        win_ratio = play_tournament(agents, starting_position_list)
+        opponents = random_agents + mm_agents + ab_agents
+        win_ratio = bench_agent(agent, opponents, starting_position_list)
 
         print("\n\nResults:")
         print("----------")
-        print("{!s:<15}{:>10.2f}%".format(agentUT.name, win_ratio))
+        print("{!s:<15}{:>10.2f}%".format(agent.name, win_ratio))
+        try:
+            print('average depth = {}'.format(agent.player.get_average_depth()))
+        except:
+            pass
 
 
 if __name__ == "__main__":

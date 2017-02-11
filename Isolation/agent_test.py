@@ -68,8 +68,9 @@ def curr_time_millis():
 
 
 def handler(obj, testcase, queue):
-    """Handler to pass information between threads; used in the timeout
-    function to abort long-running (i.e., probably hung) test cases.
+    """
+    Handler to pass information between threads; used in the timeout function to abort long-running
+    (i.e., probably hung) test cases.
     """
     try:
         queue.put((None, testcase(obj)))
@@ -78,20 +79,18 @@ def handler(obj, testcase, queue):
 
 
 def timeout(time_limit):
-    """Function decorator for unittest test cases to specify test case timeout.
-
-    The timer mechanism works by spawning a new thread for the test to run in
-    and using the timeout handler for the thread-safe queue class to abort and
-    kill the child thread if it doesn't return within the timeout.
-
-    It is not safe to access system resources (e.g., files) within test cases
-    wrapped by this timer.
     """
+    Function decorator for unittest test cases to specify test case timeout.
 
-    def wrapUnitTest(testcase):
+    The timer mechanism works by spawning a new thread for the test to run in and using the timeout handler for
+    the thread-safe queue class to abort and kill the child thread if it doesn't return within the timeout.
+
+    It is not safe to access system resources (e.g., files) within test cases wrapped by this timer.
+    """
+    def wrap_unit_test(testcase):
 
         @wraps(testcase)
-        def testWrapper(self):
+        def test_wrapper(self):
 
             queue = Queue()
 
@@ -108,20 +107,17 @@ def timeout(time_limit):
                 raise TimeoutError("Test aborted due to timeout. Test was " +
                                    "expected to finish in less than {} second(s).".format(time_limit))
 
-        return testWrapper
+        return test_wrapper
 
-    return wrapUnitTest
+    return wrap_unit_test
 
 
-def makeEvalTable(table):
-    """Use a closure to create a heuristic function that returns values from
-    a table that maps board locations to constant values. This supports testing
-    the minimax and alphabeta search functions.
-
-    THIS HEURISTIC IS ONLY USEFUL FOR TESTING THE SEARCH FUNCTIONALITY -
-    IT IS NOT MEANT AS AN EXAMPLE OF A USEFUL HEURISTIC FOR GAME PLAYING.
+def make_eval_table(table):
     """
-
+    Use a closure to create a heuristic function that returns values from a table that maps board locations to
+    constant values. This supports testing the minimax and alphabeta search functions.
+    Note: This heuristic is only useful for testing the search functionality.
+    """
     def score(game, player):
         row, col = game.get_player_location(player)
         return table[row][col]
@@ -129,20 +125,17 @@ def makeEvalTable(table):
     return score
 
 
-def makeEvalStop(limit, timer, value=None):
-    """Use a closure to create a heuristic function that forces the search
-    timer to expire when a fixed number of node expansions have been perfomred
-    during the search. This ensures that the search algorithm should always be
-    in a predictable state regardless of node expansion order.
-
-    THIS HEURISTIC IS ONLY USEFUL FOR TESTING THE SEARCH FUNCTIONALITY -
-    IT IS NOT MEANT AS AN EXAMPLE OF A USEFUL HEURISTIC FOR GAME PLAYING.
+def make_eval_stop(limit, timer):
     """
-
+    Use a closure to create a heuristic function that forces the search timer to expire when a fixed number of node
+    expansions have been performed during the search. This ensures that the search algorithm should always be in a
+    predictable state regardless of node expansion order.
+    Note: This heuristic is only useful for testing the search functionality.
+    """
+    # noinspection PyUnusedLocal
     def score(game, player):
         if timer.time_left() < 0:
-            raise TimeoutError("Timer expired during search. You must " +
-                               "return an answer before the timer reaches 0.")
+            raise TimeoutError("Timer expired during search. You must return an answer before the timer reaches 0.")
         if limit == game.counts[0]:
             timer.time_limit = 0
         return 0
@@ -150,16 +143,14 @@ def makeEvalStop(limit, timer, value=None):
     return score
 
 
-def makeBranchEval(first_branch):
-    """Use a closure to create a heuristic function that evaluates to a nonzero
-    score when the root of the search is the first branch explored, and
-    otherwise returns 0.  This heuristic is used to force alpha-beta to prune
-    some parts of a game tree for testing.
-
-    THIS HEURISTIC IS ONLY USEFUL FOR TESTING THE SEARCH FUNCTIONALITY -
-    IT IS NOT MEANT AS AN EXAMPLE OF A USEFUL HEURISTIC FOR GAME PLAYING.
+def make_branch_eval(first_branch):
     """
-
+    Use a closure to create a heuristic function that evaluates to a nonzero score when the root of the search is the
+    first branch explored, and otherwise returns 0.  This heuristic is used to force alpha-beta to prune some parts of
+    a game tree for testing.
+    Note: This heuristic is only useful for testing the search functionality.
+    """
+    # noinspection PyUnusedLocal
     def score(game, player):
         if not first_branch:
             first_branch.append(game.root)
@@ -171,11 +162,10 @@ def makeBranchEval(first_branch):
 
 
 class CounterBoard(isolation.Board):
-    """Subclass of the isolation board that maintains counters for the number
-    of unique nodes and total nodes visited during depth first search.
-
-    Some functions from the base class must be overridden to maintain the
-    counters during search.
+    """
+    Subclass of the isolation board that maintains counters for the number of unique nodes and total nodes visited
+    during depth first search.
+    Some functions from the base class must be overridden to maintain the counters during search.
     """
 
     def __init__(self, *args, **kwargs):
@@ -384,7 +374,7 @@ class Project1Test(unittest.TestCase):
         value_table[1][5] = 1  # depth 1 & 2
         value_table[4][3] = 2  # depth 3 & 4
         value_table[6][6] = 3  # depth 5
-        heuristic = makeEvalTable(value_table)
+        heuristic = make_eval_table(value_table)
 
         # These moves are the branches that will lead to the cells in the value
         # table for the search depths.
@@ -453,7 +443,7 @@ class Project1Test(unittest.TestCase):
         for idx in range(len(counts)):
             test_depth = idx + 1  # pruning guarantee requires min depth of 3
             first_branch = []
-            heuristic = makeBranchEval(first_branch)
+            heuristic = make_branch_eval(first_branch)
             agentUT, board = self.initAUT(test_depth, heuristic,
                                           iterative_search, method,
                                           loc1=starting_location,
@@ -520,7 +510,7 @@ class Project1Test(unittest.TestCase):
             # the expected number of nodes
             time_limit = 1e4
             timer = DynamicTimer(time_limit)
-            eval_fn = makeEvalStop(exact_counts[idx][0], timer, time_limit)
+            eval_fn = make_eval_stop(exact_counts[idx][0], timer, time_limit)
             agentUT, board = self.initAUT(-1, eval_fn, True, method,
                                           origins[idx], adversary_location,
                                           w, h)
