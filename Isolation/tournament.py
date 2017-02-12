@@ -21,16 +21,15 @@ initiative in the second match with agentB at (5, 2) as player 1 and agentA at
 
 from random import sample
 from collections import namedtuple
-from typing import Tuple, List
+from typing import Tuple, List, Set
 
-from heuristics import null_score, improved_score
-from heuristics import open_move_score
+from heuristics import *
 from isolation import Player, Board, Location
 from game_agent import CustomPlayer
 from sample_players import RandomPlayer
 
 
-NUM_MATCHES = 50  # number of matches against each opponent
+NUM_MATCHES = 5  # number of matches against each opponent
 TIME_LIMIT = 50  # number of milliseconds before timeout
 TIME_MARGIN = 10  # number of milliseconds before timeout to start returning
 
@@ -77,7 +76,7 @@ def play_match(player_1: Player, player_2: Player, starting_positions: Starting_
     return num_wins[player_1], num_wins[player_2]
 
 
-def bench_agent(agent: Agent, opponents: List[Agent], starting_position_list: List[Starting_Positions]) -> float:
+def bench_agent(agent: Agent, opponents: List[Agent], starting_position_list: Set[Starting_Positions]) -> float:
     """
     Confront a given agent with a list of opponents, playing matches with the same starting positions for
     each confrontation.
@@ -125,18 +124,21 @@ def main():
     # For example, MM_Open is an agent using minimax search with the open moves heuristic.
     mm_agents = [Agent(CustomPlayer(score_fn=h, **mm_args), "MM_" + name) for name, h in heuristics]
     ab_agents = [Agent(CustomPlayer(score_fn=h, **ab_args), "AB_" + name) for name, h in heuristics]
-    random_agents = [Agent(RandomPlayer(), "Random")]
+    # random_agents = [Agent(RandomPlayer(), "Random")]
+
     # ID_Improved agent is used for comparison to the performance of the submitted agent for calibration on the
     # performance across different systems; i.e., the performance of the student agent is considered relative to
     # the performance of the ID_Improved agent to account for faster or slower computers.
-    test_agents = [Agent(CustomPlayer(**custom_args), "Custom"),
-                   Agent(CustomPlayer(score_fn=improved_score, **custom_args), "ID_Improved")]
+    test_agents = [Agent(CustomPlayer(score_fn=pure_monte_carlo_score, **custom_args), "Pure Monte Carlo"),
+                   Agent(CustomPlayer(score_fn=reach_score, **custom_args), "Reach score"),
+                   Agent(CustomPlayer(score_fn=differential_reach_score, **custom_args), "Differential reach score"),
+                   Agent(CustomPlayer(score_fn=improved_score, **custom_args), "Improved score")]
 
-    # Generate a list of starting positions
-    starting_position_list = []
+    # Generate a set of starting positions
     board = Board(RandomPlayer(), RandomPlayer())
-    for _ in range(NUM_MATCHES):
-        starting_position_list.append(tuple(sample(board.get_legal_moves(), 2)))
+    starting_position_set = set()
+    while len(starting_position_set) < NUM_MATCHES:
+        starting_position_set.add(tuple(sample(board.get_legal_moves(), 2)))
 
     for agent in test_agents:
         print("")
@@ -144,8 +146,8 @@ def main():
         print("{:^25}".format("Evaluating: " + agent.name))
         print("*************************")
 
-        opponents = random_agents + mm_agents + ab_agents
-        win_ratio = bench_agent(agent, opponents, starting_position_list)
+        opponents = mm_agents + ab_agents  # + random_agents
+        win_ratio = bench_agent(agent, opponents, starting_position_set)
 
         print("\n\nResults:")
         print("----------")

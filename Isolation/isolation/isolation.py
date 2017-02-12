@@ -1,5 +1,4 @@
 from timeit import default_timer
-from warnings import warn
 from typing import Tuple, List, Callable, Union, Dict
 from abc import ABCMeta, abstractmethod
 
@@ -227,7 +226,7 @@ class Board(object):
         :return: A string representation of the current game state, marking the location of each player and indicating
                  which cells have been blocked, and which remain open.
         """
-        symbol = {(r, c): ['', '-'][self.board_state & (1 << (r * self.width + c))]
+        symbol = {(r, c): [' ', '-'][self.board_state >> (r * self.width + c) & 1]
                   for r in range(self.height) for c in range(self.width)}
 
         symbol[self.locations[self.player_1]] = '1'
@@ -273,10 +272,10 @@ class Board(object):
             remaining = time_left()
 
             if remaining < 0 and self.active_player.is_time_limited:
-                warn('Player {} timed out.'.format(1 if self.active_player == self.player_1 else 2) +
-                     """The get_move() function must return before time_left() reaches 0 ms.
-                     Some time is required for the function to return, so you may need to increase this margin to
-                     avoid timeouts during tournament play.""")
+                print('Player {} timed out.'.format(1 if self.active_player == self.player_1 else 2) +
+                      """The get_move() function must return before time_left() reaches 0 ms.
+                      Some time is required for the function to return, so you may need to increase this margin to
+                      avoid timeouts during tournament play.""")
                 reason = 'timeout'
                 break
 

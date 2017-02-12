@@ -2,7 +2,7 @@ from isolation import Board
 from sample_players import HumanPlayer
 from game_agent import CustomPlayer
 
-TIME_LIMIT = 150  # number of milliseconds before timeout
+TIME_LIMIT = 50  # number of milliseconds before timeout
 
 
 def main():

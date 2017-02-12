@@ -1,5 +1,5 @@
 from isolation import Player, Board, Timer, Location
-from random import sample
+from random import choice
 
 
 class RandomPlayer(Player):
@@ -20,7 +20,7 @@ class RandomPlayer(Player):
         if not legal_moves:
             return -1, -1
 
-        return sample(legal_moves, 1)[0]
+        return choice(legal_moves)
 
 
 class HumanPlayer(Player):

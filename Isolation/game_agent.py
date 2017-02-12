@@ -19,7 +19,7 @@ class CustomPlayer(Player):
     and a depth-limited minimax algorithm with alpha-beta pruning.
     """
 
-    def __init__(self, search_depth: int = 3, score_fn: Score_Function = differential_reach_score,
+    def __init__(self, search_depth: int = 3, score_fn: Score_Function = custom_score,
                  iterative: bool = True, method: str = 'minimax', timeout: float = 10., reordering: bool = False):
         """
 
