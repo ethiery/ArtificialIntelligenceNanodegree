@@ -18,7 +18,7 @@ I started by implementing a fixed-depth minimax search in `CustomPlayer.minimax(
 This was enough to pass the unit tests for the AI Nanodegree assignment, in `agent_test.py`.
 
 I then went a bit further by :
-- Trying to use a transposition table to avoid reevaluating certain moves. I was not able to get any performance improvement out of it, which makes sense as the probability of getting in the same state by taking two different paths is very low. 
+- Trying to use a transposition table to avoid reevaluating certain moves. I was not able to get any performance improvement out of it, which makes sense as the probability of getting in the same state by taking two different paths is very low in this game.
 - Reordering moves to maximize pruning opportunity in `CustomPlayer.alphabeta()`. That was very successful, consistently allowing to search several layers deeper in the game tree.
 
 # Heuristics
@@ -27,7 +27,7 @@ I then went a bit further by :
 
 ## Sample heuristics
 
-These 3 heuristics are used to form a set of various opponents the relative performance of my agent can be measured against (more details in the *Tournament* section).
+These 3 heuristics are used to form a set of various opponents to measure the relative performance of my agent (more details in the *Tournament* section).
 
 ### Null score
 
@@ -103,6 +103,8 @@ It was not, so I set this default value to `1.4`.
 
 ## Tournament
 
+### Setup
+
 The `tournament.py` script is used to evaluate the relative performance of my 3 heuristics in a round-robin tournament against 6 other pre-defined agents: 
 - `MM_Null`: agent using fixed-depth (depth 3) minimax search and the *null score* heuristic
 - `MM_Open`: agent using fixed-depth (depth 3) minimax search and the *open move score* heuristic
@@ -114,9 +116,13 @@ The `tournament.py` script is used to evaluate the relative performance of my 3 
 
 The performance of time-limited iterative deepening search is hardware dependent (faster hardware is expected to search deeper than slower hardware in the same amount of time).  The script controls for these effects by also measuring the baseline performance of an agent using the *improved score* heuristic. 
 
-Each of the 3 + 1 agents played 200 games against each of the 6 opponents (using a unique set of starting positions as explained earlier). The time limit was set to 50ms. The average depth reached by iterative deepening over all the games was also measured for each agent. The table below present the results.
+Each of the 3 + 1 agents played 200 games against each of the 6 opponents (using a unique set of starting positions as explained earlier). The time limit was set to 50ms. The average depth reached by iterative deepening over all the games was also measured for each agent. 
 
-|                             | *Pure Monte Carlo score* | *Reach score* | *Differential reach score* | *Improved score * |
+###Results and analysis
+
+The table below present the results of the tournament.
+
+|                             | *Pure Monte Carlo score* | *Reach score* | *Differential reach score* | *Improved score* |
 |:----------------------------|:------------------------:|:-------------:|:--------------------------:|:-----------------:|
 | Win ratio vs `MM_Null`      | 151/200                  | 187/200       | 182/200                    | 183/200           |
 | Win ratio vs `MM_Open`      | 107/200                  | 144/200       | 151/200                    | 142/200           |
@@ -126,4 +132,40 @@ Each of the 3 + 1 agents played 200 games against each of the 6 opponents (using
 | Win ratio vs `AB_Improved`  | 108/200                  | 147/200       | 145/200                    | 143/200           |
 | Average win ratio           | 61.25 %                  | 77.08 %       | 77.42 %                    | 75.58 %           |
 | Average depth reached by ID | 7.41                     | 10.39         | 9.11                       | 12.66             |
+
+Not surprisingly, the *Pure Monte Carlo* heuristic had the worst performance. This is partly due to :
+- The fact that it does not benefit from any human knowledge. That explains the big difference on win ratio between another "dumb" heuristic like *Null score*, and smarter heuristics like *Open score* and *Improved score*.
+- The cost of simulating roll outs (especially at the beginning of the game), which prevents from exploring many layers of the game tree (~7, only 2 more than the opponents using depth-limited alpha beta).
+
+
+Both the *Reach score* and *Differential reach score* heuristics consistently outperformed the *Improved score* heuristic over the 1200 games they played, resulting in respectively 1.5 % and 2 % improvements of the win ratio. Even though the iterative deepening search is 2 or 3 plies shallower when using this 2 heuristics, they seem to be able to compensate by giving a better analysis of a board. 
+
+Interestingly, the *Differential reach score* heuristic did only slightly better than the *Reach score* one. Even though it is twice as expensive to compute, I expected trying to trap the opponent to be more efficient than just focusing on your own pawn. It was not the case here, maybe because it can also favor riskier behaviours.
+
+It is really hard to come up with plausible explanations because there are so many variables. Search depth seems to be one of them: while the *Open score* heuristic gave better results than the *Improved score* one when performing a search of depth 3 (`AB_*` opponents), it was the opposite when performing a search of depth 5 (`AB_*` opponents). It made me wonder if the *Reach score* heuristic could outperform the *Differential reach score* heuristic when allowed deeper searches, so I ran the tournament again but with a time limit of 200ms.
+
+|                             | *Pure Monte Carlo score* | *Reach score* | *Differential reach score* | *Improved score* |
+|:----------------------------|:------------------------:|:-------------:|:--------------------------:|:-----------------:|
+| Win ratio vs `MM_Null`      | 174/200                  | 192/200       | 191/200                    | 193/200           |
+| Win ratio vs `MM_Open`      | 138/200                  | 153/200       | 172/200                    | 160/200           |
+| Win ratio vs `MM_Improved`  | 117/200                  | 135/200       | 162/200                    | 160/200           |
+| Win ratio vs `AB_Null`      | 154/200                  | 187/200       | 186/200                    | 185/200           |
+| Win ratio vs `AB_Open`      | 123/200                  | 145/200       | 146/200                    | 137/200           |
+| Win ratio vs `AB_Improved`  | 136/200                  | 161/200       | 167/200                    | 165/200           |
+| Average win ratio           | 70.17 %                  | 81.08 %       | 85.33 %                    | 83.33 %           |
+| Average depth reached by ID | 10.85                    | 15.19         | 12.55                      | 17.04             |
+
+In these conditions, *Differential reach score* was still the best heuristic, but *Reach score* no longer outperformed *Improve score*, which shows that sometimes searching deeper with a simpler heuristic is better. 
+
+To finish, let see how these 3 heuristics perform against each other.
+- *Reach score* vs *Differential reach score* : 179 - 221
+- *Reach score* vs *Improved score* : 190 - 210
+- *Improved score* vs *Differential reach score* : 203 - 197
+
+
+In the end, I would thus advise using `Differential reach score`.
+
+I think a good conclusion to this write up is that designing a heuristic should be an iterative process, because when so many variables are at play, only statistics over a big enough number of games can guide you reliably. 
+
+
 
