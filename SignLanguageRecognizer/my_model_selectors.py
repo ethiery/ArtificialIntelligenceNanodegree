@@ -88,8 +88,8 @@ class SelectorBIC(ModelSelector):
                 log_L = hmm_model.score(self.X, self.lengths) # log likelihood
                 log_N = math.log(len(self.X)) # log of the number of data points
                 # nb of parameters of the model = 2 * nb features * nb components (mean and std of each state) 
-                #                                + nb components (transition probabilities)
-                p = n_components * (1 + 2*len(hmm_model.means_[0]))
+                #                                + nb components^2 (transition probabilities)
+                p = n_components * (n_components + len(self.X[0]))
                 bic = -2 * log_L + p * log_N
                 bic_scores.append((bic, n_components))
             except ValueError:

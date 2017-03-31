@@ -122,7 +122,7 @@ Each of the 3 + 1 agents played 200 games against each of the 6 opponents (using
 
 The table below present the results of the tournament.
 
-|                             | *Pure Monte Carlo score* | *Reach score* | *Differential reach score* | *Improved score* |
+|                             | *Pure Monte Carlo* | *Reach* | *Differential reach* | *Improved* |
 |:----------------------------|:------------------------:|:-------------:|:--------------------------:|:-----------------:|
 | Win ratio vs `MM_Null`      | 151/200                  | 187/200       | 182/200                    | 183/200           |
 | Win ratio vs `MM_Open`      | 107/200                  | 144/200       | 151/200                    | 142/200           |
@@ -144,7 +144,7 @@ Interestingly, the *Differential reach score* heuristic did only slightly better
 
 It is really hard to come up with plausible explanations because there are so many variables. Search depth seems to be one of them: while the *Open score* heuristic gave better results than the *Improved score* one when performing a search of depth 3 (`AB_*` opponents), it was the opposite when performing a search of depth 5 (`AB_*` opponents). It made me wonder if the *Reach score* heuristic could outperform the *Differential reach score* heuristic when allowed deeper searches, so I ran the tournament again but with a time limit of 200ms.
 
-|                             | *Pure Monte Carlo score* | *Reach score* | *Differential reach score* | *Improved score* |
+|                             | *Pure Monte Carlo* | *Reach* | *Differential reach* | *Improved* |
 |:----------------------------|:------------------------:|:-------------:|:--------------------------:|:-----------------:|
 | Win ratio vs `MM_Null`      | 174/200                  | 192/200       | 191/200                    | 193/200           |
 | Win ratio vs `MM_Open`      | 138/200                  | 153/200       | 172/200                    | 160/200           |
